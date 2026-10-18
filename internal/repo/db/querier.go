@@ -6,13 +6,10 @@ package db
 
 import (
 	"context"
-
-	"github.com/jackc/pgx/v5/pgtype"
 )
 
 type Querier interface {
-	GetEventByID(ctx context.Context, id pgtype.UUID) (GetEventByIDRow, error)
-	ListActiveEventsNearby(ctx context.Context, arg ListActiveEventsNearbyParams) ([]ListActiveEventsNearbyRow, error)
+	GetNearbyEvents(ctx context.Context, arg GetNearbyEventsParams) ([]GetNearbyEventsRow, error)
 }
 
 var _ Querier = (*Queries)(nil)
