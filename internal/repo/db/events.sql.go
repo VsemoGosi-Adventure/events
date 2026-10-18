@@ -11,13 +11,46 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const getEventByID = `-- name: GetEventByID :one
-SELECT id, location_id, title, description, starts_at, ends_at, max_participants, status, is_crawled, created_at, updated_at
-FROM events.events
-WHERE id = $1 LIMIT 1
+const getNearbyEvents = `-- name: GetNearbyEvents :many
+SELECT 
+    e.id,
+    e.location_id,
+    e.title,
+    e.description,
+    e.starts_at,
+    e.ends_at,
+    e.max_participants,
+    e.status,
+    e.external_url,
+    e.created_at,
+    e.updated_at,
+    l.id AS loc_id,
+    l.name AS loc_name,
+    l.address AS loc_address,
+    ST_Y(l.coordinates::geometry) AS loc_lat,
+    ST_X(l.coordinates::geometry) AS loc_lng,
+    ST_Distance(l.coordinates, ST_MakePoint($1::float8, $2::float8)::geography) AS distance_meters,
+    COALESCE(COUNT(DISTINCT ep.id) FILTER (WHERE ep.status = 'joined'), 0)::int AS current_members
+FROM events.events e
+JOIN events.locations l ON e.location_id = l.id
+LEFT JOIN events.event_participants ep ON e.id = ep.event_id
+WHERE e.status = 'active'
+  AND e.starts_at >= NOW() - INTERVAL '2 hours'
+  AND ST_DWithin(l.coordinates, ST_MakePoint($1::float8, $2::float8)::geography, $3::float8)
+GROUP BY e.id, l.id
+ORDER BY distance_meters ASC
+LIMIT $5::int OFFSET $4::int
 `
 
-type GetEventByIDRow struct {
+type GetNearbyEventsParams struct {
+	UserLng      float64 `json:"user_lng"`
+	UserLat      float64 `json:"user_lat"`
+	RadiusMeters float64 `json:"radius_meters"`
+	OffsetVal    int32   `json:"offset_val"`
+	LimitVal     int32   `json:"limit_val"`
+}
+
+type GetNearbyEventsRow struct {
 	ID              pgtype.UUID        `json:"id"`
 	LocationID      pgtype.UUID        `json:"location_id"`
 	Title           string             `json:"title"`
@@ -26,77 +59,52 @@ type GetEventByIDRow struct {
 	EndsAt          pgtype.Timestamptz `json:"ends_at"`
 	MaxParticipants pgtype.Int4        `json:"max_participants"`
 	Status          string             `json:"status"`
-	IsCrawled       bool               `json:"is_crawled"`
+	ExternalUrl     pgtype.Text        `json:"external_url"`
 	CreatedAt       pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt       pgtype.Timestamptz `json:"updated_at"`
+	LocID           pgtype.UUID        `json:"loc_id"`
+	LocName         string             `json:"loc_name"`
+	LocAddress      string             `json:"loc_address"`
+	LocLat          interface{}        `json:"loc_lat"`
+	LocLng          interface{}        `json:"loc_lng"`
+	DistanceMeters  interface{}        `json:"distance_meters"`
+	CurrentMembers  int32              `json:"current_members"`
 }
 
-func (q *Queries) GetEventByID(ctx context.Context, id pgtype.UUID) (GetEventByIDRow, error) {
-	row := q.db.QueryRow(ctx, getEventByID, id)
-	var i GetEventByIDRow
-	err := row.Scan(
-		&i.ID,
-		&i.LocationID,
-		&i.Title,
-		&i.Description,
-		&i.StartsAt,
-		&i.EndsAt,
-		&i.MaxParticipants,
-		&i.Status,
-		&i.IsCrawled,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-	)
-	return i, err
-}
-
-const listActiveEventsNearby = `-- name: ListActiveEventsNearby :many
-SELECT e.id, e.title, e.starts_at, l.name AS location_name, l.fuzzy_district
-FROM events.events e
-JOIN events.locations l ON e.location_id = l.id
-WHERE e.status = 'active'
-  AND ST_DWithin(l.coordinates, ST_MakePoint($1, $2)::geography, $3)
-ORDER BY e.starts_at ASC
-LIMIT $4 OFFSET $5
-`
-
-type ListActiveEventsNearbyParams struct {
-	StMakepoint   interface{} `json:"st_makepoint"`
-	StMakepoint_2 interface{} `json:"st_makepoint_2"`
-	StDwithin     interface{} `json:"st_dwithin"`
-	Limit         int32       `json:"limit"`
-	Offset        int32       `json:"offset"`
-}
-
-type ListActiveEventsNearbyRow struct {
-	ID            pgtype.UUID        `json:"id"`
-	Title         string             `json:"title"`
-	StartsAt      pgtype.Timestamptz `json:"starts_at"`
-	LocationName  string             `json:"location_name"`
-	FuzzyDistrict string             `json:"fuzzy_district"`
-}
-
-func (q *Queries) ListActiveEventsNearby(ctx context.Context, arg ListActiveEventsNearbyParams) ([]ListActiveEventsNearbyRow, error) {
-	rows, err := q.db.Query(ctx, listActiveEventsNearby,
-		arg.StMakepoint,
-		arg.StMakepoint_2,
-		arg.StDwithin,
-		arg.Limit,
-		arg.Offset,
+func (q *Queries) GetNearbyEvents(ctx context.Context, arg GetNearbyEventsParams) ([]GetNearbyEventsRow, error) {
+	rows, err := q.db.Query(ctx, getNearbyEvents,
+		arg.UserLng,
+		arg.UserLat,
+		arg.RadiusMeters,
+		arg.OffsetVal,
+		arg.LimitVal,
 	)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []ListActiveEventsNearbyRow{}
+	items := []GetNearbyEventsRow{}
 	for rows.Next() {
-		var i ListActiveEventsNearbyRow
+		var i GetNearbyEventsRow
 		if err := rows.Scan(
 			&i.ID,
+			&i.LocationID,
 			&i.Title,
+			&i.Description,
 			&i.StartsAt,
-			&i.LocationName,
-			&i.FuzzyDistrict,
+			&i.EndsAt,
+			&i.MaxParticipants,
+			&i.Status,
+			&i.ExternalUrl,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.LocID,
+			&i.LocName,
+			&i.LocAddress,
+			&i.LocLat,
+			&i.LocLng,
+			&i.DistanceMeters,
+			&i.CurrentMembers,
 		); err != nil {
 			return nil, err
 		}
