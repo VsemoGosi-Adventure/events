@@ -11,7 +11,7 @@ import (
 	"github.com/pressly/goose/v3"
 )
 
-func NewPostgresDb(ctx context.Context, config config.PostgresConfig) (*pgxpool.Pool, error) {
+func NewPostgresPool(ctx context.Context, config config.PostgresConfig) (*pgxpool.Pool, error) {
 	dsnString := fmt.Sprintf(
 		"postgres://%s:%s@%s:%s/%s?sslmode=%s",
 		config.Username,

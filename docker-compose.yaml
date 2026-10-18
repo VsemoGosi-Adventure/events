@@ -1,0 +1,16 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgis/postgis:15-3.5
+    container_name: postgres_events
+    ports:
+        - '6300:5432'
+    restart: always
+    env_file:
+      - internal/config/.env
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+volumes:
+  postgres_data:
