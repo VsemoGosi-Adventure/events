@@ -1,0 +1,489 @@
+definitions:
+  dto.AccessCheckResponse:
+    properties:
+      event_id:
+        type: string
+      has_access:
+        type: boolean
+      user_id:
+        type: string
+    type: object
+  dto.CreatePingRequest:
+    properties:
+      message:
+        maxLength: 255
+        type: string
+      radius_meters:
+        maximum: 10000
+        minimum: 100
+        type: integer
+      ttl:
+        type: integer
+    required:
+    - message
+    - radius_meters
+    type: object
+  dto.ErrorResponse:
+    properties:
+      error:
+        type: string
+    type: object
+  dto.EventDetailResponse:
+    properties:
+      address:
+        type: string
+      current_members:
+        type: integer
+      description:
+        type: string
+      ends_at:
+        type: string
+      external_url:
+        type: string
+      id:
+        type: string
+      is_participant:
+        type: boolean
+      latitude:
+        type: number
+      location_name:
+        type: string
+      longitude:
+        type: number
+      max_participants:
+        type: integer
+      starts_at:
+        type: string
+      status:
+        type: string
+      tags:
+        items:
+          type: integer
+        type: array
+      title:
+        type: string
+    type: object
+  dto.GeoEventItemResponse:
+    properties:
+      address:
+        type: string
+      current_members:
+        type: integer
+      description:
+        type: string
+      distance_meters:
+        type: integer
+      ends_at:
+        type: string
+      id:
+        type: string
+      latitude:
+        type: number
+      location_name:
+        type: string
+      longitude:
+        type: number
+      max_participants:
+        type: integer
+      starts_at:
+        type: string
+      tags:
+        items:
+          type: integer
+        type: array
+      title:
+        type: string
+    type: object
+  dto.ParticipantResponse:
+    properties:
+      joined_at:
+        type: string
+      status:
+        type: string
+      user_id:
+        type: string
+    type: object
+  dto.PingResponse:
+    properties:
+      author_id:
+        type: string
+      created_at:
+        type: string
+      distance_meters:
+        type: integer
+      event_id:
+        type: string
+      event_title:
+        type: string
+      expires_at:
+        type: string
+      id:
+        type: string
+      latitude:
+        type: number
+      longitude:
+        type: number
+      message:
+        type: string
+      radius_meters:
+        type: integer
+    type: object
+info:
+  contact: {}
+  description: Микросервис управления событиями и гео-поиском.
+  title: Avantyura Events Service API
+  version: "1.0"
+paths:
+  /api/events/{id}:
+    get:
+      description: Возвращает полную карточку события по его ID. Если передан заголовок
+        X-User-Id, проверяет статус участия.
+      parameters:
+      - description: UUID события
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.EventDetailResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      summary: Детальная информация о встрече
+      tags:
+      - events
+  /api/events/{id}/join:
+    post:
+      description: Добавляет текущего пользователя в состав участников встречи в один
+        клик.
+      parameters:
+      - description: UUID события
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "409":
+          description: 'Конфликт: встреча заполнена или отменена'
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      summary: Вступление во встречу
+      tags:
+      - events
+  /api/events/{id}/leave:
+    post:
+      description: Переводит статус участника встречи в 'left', освобождая слот.
+      parameters:
+      - description: UUID события
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      summary: Выход из встречи
+      tags:
+      - events
+  /api/events/{id}/participants:
+    get:
+      description: Возвращает список пользователей, присоединившихся к событию (доступно
+        только участникам).
+      parameters:
+      - description: UUID события
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/dto.ParticipantResponse'
+            type: array
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "403":
+          description: 'Доступ запрещен: пользователь не участник'
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      summary: Список участников встречи
+      tags:
+      - events
+  /api/events/{id}/ping:
+    post:
+      consumes:
+      - application/json
+      description: Позволяет активному участнику встречи отправить пространственно-временной
+        сигнал людям поблизости.
+      parameters:
+      - description: UUID события
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Параметры пинга
+        in: body
+        name: input
+        required: true
+        schema:
+          $ref: '#/definitions/dto.CreatePingRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/dto.PingResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "403":
+          description: Пользователь не является участником
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      summary: Отправка сигнала «Пинг рядом»
+      tags:
+      - pings
+  /api/events/my:
+    get:
+      description: Возвращает список встреч, в которых текущий пользователь принимает
+        участие.
+      parameters:
+      - default: 20
+        description: Лимит выборки
+        in: query
+        name: limit
+        type: integer
+      - default: 0
+        description: Смещение
+        in: query
+        name: offset
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/dto.GeoEventItemResponse'
+            type: array
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      summary: Мои активные встречи
+      tags:
+      - events
+  /api/events/nearby:
+    get:
+      description: Возвращает список активных событий вокруг указанных координат с
+        учетом радиуса.
+      parameters:
+      - description: Широта (Latitude)
+        in: query
+        name: lat
+        required: true
+        type: number
+      - description: Долгота (Longitude)
+        in: query
+        name: lng
+        required: true
+        type: number
+      - default: 3000
+        description: Радиус в метрах (по умолчанию 3000)
+        in: query
+        name: radius
+        type: integer
+      - default: 20
+        description: Лимит выборки (по умолчанию 20)
+        in: query
+        name: limit
+        type: integer
+      - default: 0
+        description: Смещение для пагинации (по умолчанию 0)
+        in: query
+        name: offset
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/dto.GeoEventItemResponse'
+            type: array
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      summary: Получение гео-ленты событий
+      tags:
+      - events
+  /api/events/pings/nearby:
+    get:
+      description: Возвращает список живых сигналов «Пинг», в радиус действия которых
+        попадают переданные координаты.
+      parameters:
+      - description: Широта (Latitude)
+        in: query
+        name: lat
+        required: true
+        type: number
+      - description: Долгота (Longitude)
+        in: query
+        name: lng
+        required: true
+        type: number
+      - default: 20
+        description: Лимит
+        in: query
+        name: limit
+        type: integer
+      - default: 0
+        description: Смещение
+        in: query
+        name: offset
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/dto.PingResponse'
+            type: array
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      summary: Активные пинги вокруг меня
+      tags:
+      - pings
+  /internal/v1/events/{id}/access:
+    get:
+      description: Используется микросервисом чата для проверки, имеет ли пользователь
+        права на подключение к WS-комнате.
+      parameters:
+      - description: UUID события
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: UUID пользователя
+        in: query
+        name: user_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.AccessCheckResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/dto.ErrorResponse'
+      summary: Внутренняя проверка доступа к чату
+      tags:
+      - internal
+swagger: "2.0"
