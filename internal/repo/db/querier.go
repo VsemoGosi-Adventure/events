@@ -6,10 +6,20 @@ package db
 
 import (
 	"context"
+
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 type Querier interface {
+	CreatePing(ctx context.Context, arg CreatePingParams) (EventsPing, error)
+	GetEventByID(ctx context.Context, eventID pgtype.UUID) (GetEventByIDRow, error)
+	GetMyEvents(ctx context.Context, arg GetMyEventsParams) ([]GetMyEventsRow, error)
 	GetNearbyEvents(ctx context.Context, arg GetNearbyEventsParams) ([]GetNearbyEventsRow, error)
+	GetNearbyPings(ctx context.Context, arg GetNearbyPingsParams) ([]GetNearbyPingsRow, error)
+	GetParticipantStatus(ctx context.Context, arg GetParticipantStatusParams) (string, error)
+	LeaveParticipant(ctx context.Context, arg LeaveParticipantParams) error
+	ListEventParticipants(ctx context.Context, eventID pgtype.UUID) ([]EventsEventParticipant, error)
+	UpsertParticipant(ctx context.Context, arg UpsertParticipantParams) error
 }
 
 var _ Querier = (*Queries)(nil)

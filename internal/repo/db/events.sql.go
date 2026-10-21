@@ -11,29 +11,198 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const getNearbyEvents = `-- name: GetNearbyEvents :many
+const createPing = `-- name: CreatePing :one
+INSERT INTO events.pings (id, event_id, author_id, message, radius_meters, expires_at, created_at)
+VALUES (gen_random_uuid(), $1::uuid, $2::uuid, $3::text, $4::int, $5::timestamptz, NOW())
+RETURNING id, event_id, author_id, message, radius_meters, expires_at, created_at
+`
+
+type CreatePingParams struct {
+	EventID      pgtype.UUID        `json:"event_id"`
+	AuthorID     pgtype.UUID        `json:"author_id"`
+	Message      string             `json:"message"`
+	RadiusMeters int32              `json:"radius_meters"`
+	ExpiresAt    pgtype.Timestamptz `json:"expires_at"`
+}
+
+func (q *Queries) CreatePing(ctx context.Context, arg CreatePingParams) (EventsPing, error) {
+	row := q.db.QueryRow(ctx, createPing,
+		arg.EventID,
+		arg.AuthorID,
+		arg.Message,
+		arg.RadiusMeters,
+		arg.ExpiresAt,
+	)
+	var i EventsPing
+	err := row.Scan(
+		&i.ID,
+		&i.EventID,
+		&i.AuthorID,
+		&i.Message,
+		&i.RadiusMeters,
+		&i.ExpiresAt,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
+const getEventByID = `-- name: GetEventByID :one
 SELECT 
-    e.id,
-    e.location_id,
-    e.title,
-    e.description,
-    e.starts_at,
-    e.ends_at,
-    e.max_participants,
-    e.status,
-    e.external_url,
-    e.created_at,
-    e.updated_at,
-    l.id AS loc_id,
-    l.name AS loc_name,
-    l.address AS loc_address,
-    ST_Y(l.coordinates::geometry) AS loc_lat,
-    ST_X(l.coordinates::geometry) AS loc_lng,
-    ST_Distance(l.coordinates, ST_MakePoint($1::float8, $2::float8)::geography) AS distance_meters,
+    e.id, e.location_id, e.title, e.description, e.starts_at, e.ends_at, e.max_participants, e.status, e.is_crawled, e.external_url, e.created_at, e.updated_at,
+    l.id AS loc_id, l.name AS loc_name, l.address AS loc_address, 
+    ST_Y(l.coordinates::geometry)::float8 AS loc_lat,
+    ST_X(l.coordinates::geometry)::float8 AS loc_lng,
     COALESCE(COUNT(DISTINCT ep.id) FILTER (WHERE ep.status = 'joined'), 0)::int AS current_members
 FROM events.events e
 JOIN events.locations l ON e.location_id = l.id
-LEFT JOIN events.event_participants ep ON e.id = ep.event_id
+LEFT JOIN events.event_participants ep ON e.id = ep.event_id AND ep.status = 'joined'
+WHERE e.id = $1::uuid
+GROUP BY e.id, l.id
+`
+
+type GetEventByIDRow struct {
+	ID              pgtype.UUID        `json:"id"`
+	LocationID      pgtype.UUID        `json:"location_id"`
+	Title           string             `json:"title"`
+	Description     pgtype.Text        `json:"description"`
+	StartsAt        pgtype.Timestamptz `json:"starts_at"`
+	EndsAt          pgtype.Timestamptz `json:"ends_at"`
+	MaxParticipants pgtype.Int4        `json:"max_participants"`
+	Status          string             `json:"status"`
+	IsCrawled       bool               `json:"is_crawled"`
+	ExternalUrl     pgtype.Text        `json:"external_url"`
+	CreatedAt       pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt       pgtype.Timestamptz `json:"updated_at"`
+	LocID           pgtype.UUID        `json:"loc_id"`
+	LocName         string             `json:"loc_name"`
+	LocAddress      string             `json:"loc_address"`
+	LocLat          float64            `json:"loc_lat"`
+	LocLng          float64            `json:"loc_lng"`
+	CurrentMembers  int32              `json:"current_members"`
+}
+
+func (q *Queries) GetEventByID(ctx context.Context, eventID pgtype.UUID) (GetEventByIDRow, error) {
+	row := q.db.QueryRow(ctx, getEventByID, eventID)
+	var i GetEventByIDRow
+	err := row.Scan(
+		&i.ID,
+		&i.LocationID,
+		&i.Title,
+		&i.Description,
+		&i.StartsAt,
+		&i.EndsAt,
+		&i.MaxParticipants,
+		&i.Status,
+		&i.IsCrawled,
+		&i.ExternalUrl,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.LocID,
+		&i.LocName,
+		&i.LocAddress,
+		&i.LocLat,
+		&i.LocLng,
+		&i.CurrentMembers,
+	)
+	return i, err
+}
+
+const getMyEvents = `-- name: GetMyEvents :many
+SELECT 
+    e.id, e.location_id, e.title, e.description, e.starts_at, e.ends_at, e.max_participants, e.status, e.is_crawled, e.external_url, e.created_at, e.updated_at,
+    l.id AS loc_id, l.name AS loc_name, l.address AS loc_address, 
+    ST_Y(l.coordinates::geometry)::float8 AS loc_lat,
+    ST_X(l.coordinates::geometry)::float8 AS loc_lng,
+    COALESCE(COUNT(DISTINCT ep_all.id) FILTER (WHERE ep_all.status = 'joined'), 0)::int AS current_members
+FROM events.event_participants ep
+JOIN events.events e ON ep.event_id = e.id
+JOIN events.locations l ON e.location_id = l.id
+LEFT JOIN events.event_participants ep_all ON e.id = ep_all.event_id AND ep_all.status = 'joined'
+WHERE ep.user_id = $1::uuid 
+  AND ep.status = 'joined'
+  AND e.status = 'active'
+GROUP BY e.id, l.id
+ORDER BY e.starts_at ASC
+LIMIT $3::int OFFSET $2::int
+`
+
+type GetMyEventsParams struct {
+	UserID    pgtype.UUID `json:"user_id"`
+	OffsetVal int32       `json:"offset_val"`
+	LimitVal  int32       `json:"limit_val"`
+}
+
+type GetMyEventsRow struct {
+	ID              pgtype.UUID        `json:"id"`
+	LocationID      pgtype.UUID        `json:"location_id"`
+	Title           string             `json:"title"`
+	Description     pgtype.Text        `json:"description"`
+	StartsAt        pgtype.Timestamptz `json:"starts_at"`
+	EndsAt          pgtype.Timestamptz `json:"ends_at"`
+	MaxParticipants pgtype.Int4        `json:"max_participants"`
+	Status          string             `json:"status"`
+	IsCrawled       bool               `json:"is_crawled"`
+	ExternalUrl     pgtype.Text        `json:"external_url"`
+	CreatedAt       pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt       pgtype.Timestamptz `json:"updated_at"`
+	LocID           pgtype.UUID        `json:"loc_id"`
+	LocName         string             `json:"loc_name"`
+	LocAddress      string             `json:"loc_address"`
+	LocLat          float64            `json:"loc_lat"`
+	LocLng          float64            `json:"loc_lng"`
+	CurrentMembers  int32              `json:"current_members"`
+}
+
+func (q *Queries) GetMyEvents(ctx context.Context, arg GetMyEventsParams) ([]GetMyEventsRow, error) {
+	rows, err := q.db.Query(ctx, getMyEvents, arg.UserID, arg.OffsetVal, arg.LimitVal)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []GetMyEventsRow{}
+	for rows.Next() {
+		var i GetMyEventsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.LocationID,
+			&i.Title,
+			&i.Description,
+			&i.StartsAt,
+			&i.EndsAt,
+			&i.MaxParticipants,
+			&i.Status,
+			&i.IsCrawled,
+			&i.ExternalUrl,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.LocID,
+			&i.LocName,
+			&i.LocAddress,
+			&i.LocLat,
+			&i.LocLng,
+			&i.CurrentMembers,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getNearbyEvents = `-- name: GetNearbyEvents :many
+SELECT 
+    e.id, e.location_id, e.title, e.description, e.starts_at, e.ends_at, e.max_participants, e.status, e.is_crawled, e.external_url, e.created_at, e.updated_at,
+    l.id AS loc_id, l.name AS loc_name, l.address AS loc_address, 
+    ST_Y(l.coordinates::geometry)::float8 AS loc_lat,
+    ST_X(l.coordinates::geometry)::float8 AS loc_lng,
+    ST_Distance(l.coordinates, ST_MakePoint($1::float8, $2::float8)::geography)::float8 AS distance_meters,
+    COALESCE(COUNT(DISTINCT ep.id) FILTER (WHERE ep.status = 'joined'), 0)::int AS current_members
+FROM events.events e
+JOIN events.locations l ON e.location_id = l.id
+LEFT JOIN events.event_participants ep ON e.id = ep.event_id AND ep.status = 'joined'
 WHERE e.status = 'active'
   AND e.starts_at >= NOW() - INTERVAL '2 hours'
   AND ST_DWithin(l.coordinates, ST_MakePoint($1::float8, $2::float8)::geography, $3::float8)
@@ -59,15 +228,16 @@ type GetNearbyEventsRow struct {
 	EndsAt          pgtype.Timestamptz `json:"ends_at"`
 	MaxParticipants pgtype.Int4        `json:"max_participants"`
 	Status          string             `json:"status"`
+	IsCrawled       bool               `json:"is_crawled"`
 	ExternalUrl     pgtype.Text        `json:"external_url"`
 	CreatedAt       pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt       pgtype.Timestamptz `json:"updated_at"`
 	LocID           pgtype.UUID        `json:"loc_id"`
 	LocName         string             `json:"loc_name"`
 	LocAddress      string             `json:"loc_address"`
-	LocLat          interface{}        `json:"loc_lat"`
-	LocLng          interface{}        `json:"loc_lng"`
-	DistanceMeters  interface{}        `json:"distance_meters"`
+	LocLat          float64            `json:"loc_lat"`
+	LocLng          float64            `json:"loc_lng"`
+	DistanceMeters  float64            `json:"distance_meters"`
 	CurrentMembers  int32              `json:"current_members"`
 }
 
@@ -95,6 +265,7 @@ func (q *Queries) GetNearbyEvents(ctx context.Context, arg GetNearbyEventsParams
 			&i.EndsAt,
 			&i.MaxParticipants,
 			&i.Status,
+			&i.IsCrawled,
 			&i.ExternalUrl,
 			&i.CreatedAt,
 			&i.UpdatedAt,
@@ -114,4 +285,161 @@ func (q *Queries) GetNearbyEvents(ctx context.Context, arg GetNearbyEventsParams
 		return nil, err
 	}
 	return items, nil
+}
+
+const getNearbyPings = `-- name: GetNearbyPings :many
+SELECT 
+    p.id, p.event_id, p.author_id, p.message, p.radius_meters, p.expires_at, p.created_at,
+    e.title AS event_title,
+    ST_Y(l.coordinates::geometry)::float8 AS lat,
+    ST_X(l.coordinates::geometry)::float8 AS lng,
+    ST_Distance(l.coordinates, ST_MakePoint($1::float8, $2::float8)::geography)::float8 AS distance_meters
+FROM events.pings p
+JOIN events.events e ON p.event_id = e.id
+JOIN events.locations l ON e.location_id = l.id
+WHERE p.expires_at > NOW()
+  AND ST_DWithin(l.coordinates, ST_MakePoint($1::float8, $2::float8)::geography, p.radius_meters::float8)
+ORDER BY p.created_at DESC
+LIMIT $4::int OFFSET $3::int
+`
+
+type GetNearbyPingsParams struct {
+	UserLng   float64 `json:"user_lng"`
+	UserLat   float64 `json:"user_lat"`
+	OffsetVal int32   `json:"offset_val"`
+	LimitVal  int32   `json:"limit_val"`
+}
+
+type GetNearbyPingsRow struct {
+	ID             pgtype.UUID        `json:"id"`
+	EventID        pgtype.UUID        `json:"event_id"`
+	AuthorID       pgtype.UUID        `json:"author_id"`
+	Message        string             `json:"message"`
+	RadiusMeters   int32              `json:"radius_meters"`
+	ExpiresAt      pgtype.Timestamptz `json:"expires_at"`
+	CreatedAt      pgtype.Timestamptz `json:"created_at"`
+	EventTitle     string             `json:"event_title"`
+	Lat            float64            `json:"lat"`
+	Lng            float64            `json:"lng"`
+	DistanceMeters float64            `json:"distance_meters"`
+}
+
+func (q *Queries) GetNearbyPings(ctx context.Context, arg GetNearbyPingsParams) ([]GetNearbyPingsRow, error) {
+	rows, err := q.db.Query(ctx, getNearbyPings,
+		arg.UserLng,
+		arg.UserLat,
+		arg.OffsetVal,
+		arg.LimitVal,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []GetNearbyPingsRow{}
+	for rows.Next() {
+		var i GetNearbyPingsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.EventID,
+			&i.AuthorID,
+			&i.Message,
+			&i.RadiusMeters,
+			&i.ExpiresAt,
+			&i.CreatedAt,
+			&i.EventTitle,
+			&i.Lat,
+			&i.Lng,
+			&i.DistanceMeters,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getParticipantStatus = `-- name: GetParticipantStatus :one
+SELECT status FROM events.event_participants
+WHERE event_id = $1::uuid AND user_id = $2::uuid
+`
+
+type GetParticipantStatusParams struct {
+	EventID pgtype.UUID `json:"event_id"`
+	UserID  pgtype.UUID `json:"user_id"`
+}
+
+func (q *Queries) GetParticipantStatus(ctx context.Context, arg GetParticipantStatusParams) (string, error) {
+	row := q.db.QueryRow(ctx, getParticipantStatus, arg.EventID, arg.UserID)
+	var status string
+	err := row.Scan(&status)
+	return status, err
+}
+
+const leaveParticipant = `-- name: LeaveParticipant :exec
+UPDATE events.event_participants
+SET status = 'left', updated_at = NOW()
+WHERE event_id = $1::uuid AND user_id = $2::uuid
+`
+
+type LeaveParticipantParams struct {
+	EventID pgtype.UUID `json:"event_id"`
+	UserID  pgtype.UUID `json:"user_id"`
+}
+
+func (q *Queries) LeaveParticipant(ctx context.Context, arg LeaveParticipantParams) error {
+	_, err := q.db.Exec(ctx, leaveParticipant, arg.EventID, arg.UserID)
+	return err
+}
+
+const listEventParticipants = `-- name: ListEventParticipants :many
+SELECT id, event_id, user_id, status, joined_at, updated_at
+FROM events.event_participants
+WHERE event_id = $1::uuid AND status = 'joined'
+`
+
+func (q *Queries) ListEventParticipants(ctx context.Context, eventID pgtype.UUID) ([]EventsEventParticipant, error) {
+	rows, err := q.db.Query(ctx, listEventParticipants, eventID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []EventsEventParticipant{}
+	for rows.Next() {
+		var i EventsEventParticipant
+		if err := rows.Scan(
+			&i.ID,
+			&i.EventID,
+			&i.UserID,
+			&i.Status,
+			&i.JoinedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const upsertParticipant = `-- name: UpsertParticipant :exec
+INSERT INTO events.event_participants (event_id, user_id, status, joined_at, updated_at)
+VALUES ($1::uuid, $2::uuid, 'joined', NOW(), NOW())
+ON CONFLICT (event_id, user_id) 
+DO UPDATE SET status = 'joined', updated_at = NOW()
+`
+
+type UpsertParticipantParams struct {
+	EventID pgtype.UUID `json:"event_id"`
+	UserID  pgtype.UUID `json:"user_id"`
+}
+
+func (q *Queries) UpsertParticipant(ctx context.Context, arg UpsertParticipantParams) error {
+	_, err := q.db.Exec(ctx, upsertParticipant, arg.EventID, arg.UserID)
+	return err
 }
