@@ -15,8 +15,15 @@ type PostgresConfig struct {
 	SSLMode       string `env:"POSTGRES_SSLMODE"`
 }
 
+type ConsumerConfig struct {
+	Brokers []string `env:"CONSUMER_BROKERS,required" envSeparator:","`
+	Topic   string   `env:"CONSUMER_TOPIC,required"`
+	GroupID string   `env:"CONSUMER_GROUP_ID,required"`
+}
+
 type Config struct {
 	PostgresConfig PostgresConfig
+	ConsumerConfig ConsumerConfig
 }
 
 func NewConfig() (*Config, error) {

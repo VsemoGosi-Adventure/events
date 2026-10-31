@@ -21,8 +21,9 @@ LIMIT @limit_val::int OFFSET @offset_val::int;
 SELECT 
     e.id, e.location_id, e.title, e.description, e.starts_at, e.ends_at, e.max_participants, e.status, e.is_crawled, e.external_url, e.created_at, e.updated_at,
     l.id AS loc_id, l.name AS loc_name, l.address AS loc_address, 
-    ST_Y(l.coordinates::geometry)::float8 AS loc_lat,
-    ST_X(l.coordinates::geometry)::float8 AS loc_lng,
+    COALESCE(ST_Y(l.coordinates::geometry), 0)::float8 AS loc_lat,
+    COALESCE(ST_X(l.coordinates::geometry), 0)::float8 AS loc_lng,
+    (l.coordinates IS NOT NULL)::boolean AS has_coordinates,
     COALESCE(COUNT(DISTINCT ep.id) FILTER (WHERE ep.status = 'joined'), 0)::int AS current_members
 FROM events.events e
 JOIN events.locations l ON e.location_id = l.id
@@ -35,8 +36,9 @@ GROUP BY e.id, l.id;
 SELECT 
     e.id, e.location_id, e.title, e.description, e.starts_at, e.ends_at, e.max_participants, e.status, e.is_crawled, e.external_url, e.created_at, e.updated_at,
     l.id AS loc_id, l.name AS loc_name, l.address AS loc_address, 
-    ST_Y(l.coordinates::geometry)::float8 AS loc_lat,
-    ST_X(l.coordinates::geometry)::float8 AS loc_lng,
+    COALESCE(ST_Y(l.coordinates::geometry), 0)::float8 AS loc_lat,
+    COALESCE(ST_X(l.coordinates::geometry), 0)::float8 AS loc_lng,
+    (l.coordinates IS NOT NULL)::boolean AS has_coordinates,
     COALESCE(COUNT(DISTINCT ep_all.id) FILTER (WHERE ep_all.status = 'joined'), 0)::int AS current_members
 FROM events.event_participants ep
 JOIN events.events e ON ep.event_id = e.id
