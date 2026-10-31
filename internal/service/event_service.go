@@ -58,8 +58,8 @@ func (s *EventService) GetNearbyEvents(ctx context.Context, filter domain.GeoFil
 			CurrentMembers:  int(r.CurrentMembers),
 			LocationName:    r.LocName,
 			Address:         r.LocAddress,
-			Latitude:        r.LocLat,
-			Longitude:       r.LocLng,
+			Latitude:        &r.LocLat,
+			Longitude:       &r.LocLng,
 		})
 	}
 
@@ -83,6 +83,11 @@ func (s *EventService) GetEventByID(ctx context.Context, eventID uuid.UUID, user
 		}
 	}
 
+	var latitude, longitude *float64
+	if row.HasCoordinates {
+		latitude, longitude = &row.LocLat, &row.LocLng
+	}
+
 	return &dto.EventDetailResponse{
 		ID:              uuid.UUID(row.ID.Bytes),
 		Title:           row.Title,
@@ -95,8 +100,8 @@ func (s *EventService) GetEventByID(ctx context.Context, eventID uuid.UUID, user
 		IsParticipant:   isParticipant,
 		LocationName:    row.LocName,
 		Address:         row.LocAddress,
-		Latitude:        row.LocLat,
-		Longitude:       row.LocLng,
+		Latitude:        latitude,
+		Longitude:       longitude,
 		ExternalURL:     pgTextToPtr(row.ExternalUrl),
 	}, nil
 }
@@ -149,8 +154,10 @@ func (s *EventService) GetMyEvents(ctx context.Context, userID uuid.UUID, limit,
 
 	items := make([]dto.GeoEventItemResponse, 0, len(rows))
 	for _, r := range rows {
-		lat := r.LocLat
-		lng := r.LocLng
+		var lat, lng *float64
+		if r.HasCoordinates {
+			lat, lng = &r.LocLat, &r.LocLng
+		}
 
 		items = append(items, dto.GeoEventItemResponse{
 			ID:              uuid.UUID(r.ID.Bytes),

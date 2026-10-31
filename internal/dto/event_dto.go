@@ -22,8 +22,8 @@ type GeoEventItemResponse struct {
 	CurrentMembers  int        `json:"current_members"`
 	LocationName    string     `json:"location_name"`
 	Address         string     `json:"address"`
-	Latitude        float64    `json:"latitude"`
-	Longitude       float64    `json:"longitude"`
+	Latitude        *float64   `json:"latitude,omitempty"`
+	Longitude       *float64   `json:"longitude,omitempty"`
 	Tags            []int      `json:"tags,omitempty"`
 }
 
@@ -40,8 +40,8 @@ type EventDetailResponse struct {
 	IsParticipant   bool       `json:"is_participant"`
 	LocationName    string     `json:"location_name"`
 	Address         string     `json:"address"`
-	Latitude        float64    `json:"latitude"`
-	Longitude       float64    `json:"longitude"`
+	Latitude        *float64   `json:"latitude,omitempty"`
+	Longitude       *float64   `json:"longitude,omitempty"`
 	ExternalURL     *string    `json:"external_url,omitempty"`
 	Tags            []int      `json:"tags"`
 }

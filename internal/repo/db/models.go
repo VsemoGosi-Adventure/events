@@ -18,18 +18,22 @@ type EventsCheckIn struct {
 }
 
 type EventsEvent struct {
-	ID              pgtype.UUID        `json:"id"`
-	LocationID      pgtype.UUID        `json:"location_id"`
-	Title           string             `json:"title"`
-	Description     pgtype.Text        `json:"description"`
-	StartsAt        pgtype.Timestamptz `json:"starts_at"`
-	EndsAt          pgtype.Timestamptz `json:"ends_at"`
-	MaxParticipants pgtype.Int4        `json:"max_participants"`
-	Status          string             `json:"status"`
-	IsCrawled       bool               `json:"is_crawled"`
-	ExternalUrl     pgtype.Text        `json:"external_url"`
-	CreatedAt       pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt       pgtype.Timestamptz `json:"updated_at"`
+	ID               pgtype.UUID        `json:"id"`
+	LocationID       pgtype.UUID        `json:"location_id"`
+	Title            string             `json:"title"`
+	Description      pgtype.Text        `json:"description"`
+	StartsAt         pgtype.Timestamptz `json:"starts_at"`
+	EndsAt           pgtype.Timestamptz `json:"ends_at"`
+	MaxParticipants  pgtype.Int4        `json:"max_participants"`
+	Status           string             `json:"status"`
+	IsCrawled        bool               `json:"is_crawled"`
+	ExternalUrl      pgtype.Text        `json:"external_url"`
+	CreatedAt        pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt        pgtype.Timestamptz `json:"updated_at"`
+	ExternalSource   pgtype.Text        `json:"external_source"`
+	ExternalSourceID pgtype.Text        `json:"external_source_id"`
+	JoinPolicy       pgtype.Text        `json:"join_policy"`
+	Tags             []string           `json:"tags"`
 }
 
 type EventsEventParticipant struct {
