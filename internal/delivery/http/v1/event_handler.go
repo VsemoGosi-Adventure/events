@@ -40,17 +40,27 @@ func (h *EventHandler) RegisterRoutes(router *gin.Engine) {
 	// TODO Повесить мидвари как будет готов сервис авторизации и траефик
 
 	api := router.Group("/api/events")
+	api.Use(middleware.RequestID(), middleware.SlogLogger())
 	{
 		api.GET("/nearby", h.GetNearby)
 		api.GET("/:id", middleware.AuthOptional(), h.GetByID)
-		api.GET("/my", h.GetMyEvents)
 		api.GET("/pings/nearby", h.GetNearbyPings)
-		api.POST("/:id/join", h.JoinEvent)
-		api.POST("/:id/leave", h.LeaveEvent)
 		api.GET("/:id/participants", h.GetParticipants)
-		api.POST("/:id/ping", h.CreatePing)
-		api.GET("/internal/v1/events/:id/access", h.CheckAccess)
 
+		protected := api.Group("")
+		protected.Use(middleware.AuthRequired())
+		{
+			protected.GET("/my", h.GetMyEvents)
+			protected.POST("/:id/join", h.JoinEvent)
+			protected.POST("/:id/leave", h.LeaveEvent)
+			protected.POST("/:id/ping", h.CreatePing)
+		}
+	}
+
+	internal := router.Group("/internal/v1/events")
+	internal.Use(middleware.RequestID(), middleware.SlogLogger())
+	{
+		internal.GET("/:id/access", h.CheckAccess)
 	}
 }
 
