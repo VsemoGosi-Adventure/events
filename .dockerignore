@@ -1,0 +1,27 @@
+.git
+.gitignore
+.dockerignore
+.idea
+.vscode
+
+# Конфигурационные файлы с секретами
+.env
+*.env
+internal/config/.env
+
+# Бинарники и временные файлы сборки
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+coverage.*
+profile.cov
+tmp*
+
+# Прочее
+README.md
+LICENSE
+docker-compose*.yaml
